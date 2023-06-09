@@ -64,42 +64,26 @@ int main(int argc, char **args){
   if (rank == root){
     std::cout << "Number of Nodes : " << msh.nodes.size << std::endl;
     std::cout << "Number of Elements : " << msh.topology.size << std::endl;
-    Eigen::SparseMatrix<double> K(meshDof, meshDof);
-    std::vector<Eigen::Triplet<double>> tripletK;
-    utils::assembleMatrix(A, tripletK, msh, mat);
+    utils::assembleMatrix(A, msh, mat);
     domain edgeDomain(elem, 1);
     edgeDomain.getDomainData(vtkobj);
     edgeDomain.getDomainTags(vtkobj);
     bc* press = bc::bcMap[bcType](); 
     press->set_values(msh, edgeDomain, {bcTag}, bcValue);
     std::vector<bc> bcs{*press};
-    Eigen::VectorXd f(meshDof); 
-    f.setZero();
-    utils::assembleVector(b, f, msh, bcs);
+    utils::assembleVector(b, msh, bcs);
 
     domain dbcBoundary = edgeDomain.getSubdomain(dbcTag);
     utils::getDBCvalues(nodeValuePair, dbcBoundary, dbcDim, dbcValue, elem->dim);
     std::sort(nodeValuePair.begin(), nodeValuePair.end());
 
-    utils::applyDirichletBC(tripletK, nodeValuePair, f);
-    K.setFromTriplets(tripletK.begin(), tripletK.end());
-
-    std::cout << "K Matrix:(" << K.rows() << "x"<< K.cols() << ") : " << std::endl << K.block(0,0,K.rows(),K.cols()) << std::endl;
-    //std::cout << "f : " << f.transpose() << std::endl;
-
-    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
-    solver.compute(K);
-    Eigen::VectorXd solution = solver.solve(f);
-    auto topo = vtkobj.get_topology(elem->get_elemType(2));
-    iovtk outvtk(vtkobj.nodes, topo, elem);
-    outvtk.writeVtk("displacement.vtk", solution.data());
   }
   VecAssemblyBegin(b);
   VecAssemblyEnd(b);
   MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
   MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
 
-  utils::applyDirichletBC2(A, b, nodeValuePair);
+  utils::applyDirichletBC(A, b, nodeValuePair);
 
   KSPCreate(PETSC_COMM_WORLD, &ksp);
   KSPSetOperators(ksp, A, A);
@@ -110,8 +94,8 @@ int main(int argc, char **args){
   KSPSolve(ksp, b, x);
 
   //MatZeroRowsColumns(A, numDBC, rowsDBC, 1.0, NULL, NULL);
-  MatView(A, PETSC_VIEWER_STDOUT_WORLD);
-  VecView(x,PETSC_VIEWER_STDOUT_WORLD);
+  //MatView(A, PETSC_VIEWER_STDOUT_WORLD);
+  //VecView(x,PETSC_VIEWER_STDOUT_WORLD);
 
   Vec            x_seq;
   PetscScalar    *solution2;
@@ -125,7 +109,7 @@ int main(int argc, char **args){
   if(rank == root){
     auto topo = vtkobj.get_topology(elem->get_elemType(2));
     iovtk outvtk(vtkobj.nodes, topo, elem);
-    outvtk.writeVtk("displacement2.vtk", solution2);
+    outvtk.writeVtk("displacement.vtk", solution2);
   }
 
   PetscFinalize();

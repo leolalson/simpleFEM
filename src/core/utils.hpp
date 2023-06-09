@@ -41,7 +41,7 @@ void printVector2D(std::vector<std::vector<T>> myVector, std::string name){
   }
 }
 
-void assembleMatrix(Mat &A, std::vector<Eigen::Triplet<double>> &tripletK, mesh &msh, material* mat){
+void assembleMatrix(Mat &A, mesh &msh, material* mat){
   int dim = msh.topology.dim;
   PetscInt dof = msh.elem->numNodes * dim;
   PetscInt* elemtopoDof2 = new PetscInt[dof];
@@ -60,15 +60,7 @@ void assembleMatrix(Mat &A, std::vector<Eigen::Triplet<double>> &tripletK, mesh 
     Eigen::VectorXi elemTopoDof = topoDof.row(e);
     Eigen::MatrixXd elemNodes = nodes2d(elemTopo, Eigen::all);
     Eigen::MatrixXd K_local = msh.elem->Kmatrix(elemNodes, mat->D);
-
-    //Eigen assembly
-    for(int j=0;j<elemTopoDof.size();++j){
-      for(int k=0;k<elemTopoDof.size();++k){
-        tripletK.push_back(Eigen::Triplet<double> (elemTopoDof[j], elemTopoDof[k], K_local(j,k)));
-      }
-    }
     
-    //Petsc assembly
     std::copy(elemTopoDof.data(), elemTopoDof.data() + elemTopoDof.size(), elemtopoDof2);
     value = K_local.data();
     MatSetValues(A, dof, elemtopoDof2, dof, elemtopoDof2, value, ADD_VALUES);
@@ -76,7 +68,7 @@ void assembleMatrix(Mat &A, std::vector<Eigen::Triplet<double>> &tripletK, mesh 
 }
 
 
-void assembleVector(Vec &b, Eigen::VectorXd &f_global, mesh msh, std::vector<bc> bcs){
+void assembleVector(Vec &b, mesh msh, std::vector<bc> bcs){
   bc bc0 = bcs[0];  
   int dim = msh.topology.dim;
   PetscInt dof = bc0.boundary.elem->numNodes * dim;
@@ -97,10 +89,7 @@ void assembleVector(Vec &b, Eigen::VectorXd &f_global, mesh msh, std::vector<bc>
     Eigen::VectorXi elemTopoDof = topoDof.row(e);
     Eigen::MatrixXd elemNodes = nodes2d(elemTopo, Eigen::all);
     Eigen::VectorXd f_local = bc0.boundary.elem->fvector(elemNodes, bc0.bcVector.row(e));
-    for(int i=0;i<elemTopoDof.size();++i){
-      f_global(elemTopoDof(i)) += f_local(i);
-    }
-    //Petsc assembly
+
     std::copy(elemTopoDof.data(), elemTopoDof.data() + elemTopoDof.size(), elemtopoDof2);
     value = f_local.data();
     VecSetValues(b, dof, elemtopoDof2, value, ADD_VALUES);
@@ -123,45 +112,7 @@ void getDBCvalues(std::vector<std::pair<int, double>> &nodeValuePair, domain dbc
   }
 }
 
-void applyDirichletBC(std::vector<Eigen::Triplet<double>> &tripletK, std::vector<std::pair<int, double>> nodeValuePair,
-                        Eigen::VectorXd &f_global){
-
-  std::vector<int> nodedof;
-  nodedof.reserve(nodeValuePair.size());
-	std::vector<double> valuedof;
-  valuedof.reserve(nodeValuePair.size());
-
-  for(int i=0;i<nodeValuePair.size();++i){
-    nodedof.push_back(nodeValuePair[i].first);	
-		valuedof.push_back(nodeValuePair[i].second);
-    std::cout << "nodedof: " << nodeValuePair[i].first << ", valuedof: " << nodeValuePair[i].second << std::endl;
-  }
-
-	std::vector<int>::iterator it1;
-	std::vector<int>::iterator it2;
-	std::vector<Eigen::Triplet<double>> tripletDBC;
-	for(int index=0;index<tripletK.size();++index){
-		it1 = std::find(nodedof.begin(), nodedof.end(), tripletK[index].col());
-		it2 = std::find(nodedof.begin(), nodedof.end(), tripletK[index].row());
-		if(it1 !=nodedof.end() || it2 !=nodedof.end()){
-			tripletK.erase(tripletK.begin() + index);
-			--index;
-		}
-
-	}
-  for(int index=0;index<nodedof.size();++index){
-    tripletDBC.push_back(Eigen::Triplet<double> (nodedof[index], nodedof[index], 1.0));
-  }
-
-	tripletK.insert(tripletK.end(), tripletDBC.begin(), tripletDBC.end());
-	for(int index=0;index<nodedof.size();++index){
-		f_global[nodedof[index]] = valuedof[index];
-	}
-	
-	return;
-}
-
-void applyDirichletBC2(Mat &A, Vec &b, std::vector<std::pair<int, double>> nodeValuePair){
+void applyDirichletBC(Mat &A, Vec &b, std::vector<std::pair<int, double>> nodeValuePair){
 
   PetscInt numDBC = nodeValuePair.size();
   PetscInt rowsDBC[numDBC], dof;
