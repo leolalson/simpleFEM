@@ -16,14 +16,12 @@ class element{
   ~element();
   uint32_t numNodes;
   size_t dim;
-  //size_t elemType;
+  int dof;
+  std::string id = " ";
   std::map<size_t, size_t> elemType;
   double thick;
-  int dof;
-  Eigen::MatrixXd gaussPts2D;
-  Eigen::VectorXd gaussWts2D;
-  Eigen::MatrixXd gaussPts1D;
-  Eigen::VectorXd gaussWts1D;
+  Eigen::MatrixXd gaussPts;
+  Eigen::VectorXd gaussWts;
   Eigen::MatrixXf K;
 
   static std::map<std::string, element * (*) ()> elementMap;
@@ -43,6 +41,10 @@ class element{
   size_t get_elemType(size_t dim){
     return elemType[dim];
   }
+
+  virtual element* getElement(element* eElem, int eDim){
+    return eElem;
+  };
 };
 
 class tri3 : public element{
@@ -52,9 +54,17 @@ class tri3 : public element{
   static element * create() { return new tri3(); }
 
   Eigen::MatrixXd Kmatrix(Eigen::MatrixXd coords, Eigen::MatrixXd D);
-  Eigen::VectorXd fvector(Eigen::MatrixXd Xe, Eigen::VectorXd F);
+  //Eigen::VectorXd fvector(Eigen::MatrixXd Xe, Eigen::VectorXd F);
+  virtual element* getElement(element* eElem, int eDim);
 
 };
 
+class line2 : public element{
+  public:
+  line2();
+  ~line2();
+  static element * create() { return new line2(); }
+  //Eigen::MatrixXd Kmatrix(Eigen::MatrixXd coords, Eigen::MatrixXd D);
+  Eigen::VectorXd fvector(Eigen::MatrixXd coords, Eigen::VectorXd F);
 
-
+};

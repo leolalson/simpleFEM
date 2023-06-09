@@ -4,4 +4,6 @@ add_library(CORE
                 io.hpp io.cpp
                 fem.hpp fem.cpp
                 mesh.hpp mesh.cpp
-                mat.hpp mat.cpp)
+                mat.hpp mat.cpp
+                bc.hpp bc.cpp)
+

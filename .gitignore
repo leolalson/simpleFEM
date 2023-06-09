@@ -49,5 +49,8 @@ _deps
 build/
 src/build/
 
+#libraries
+lib/
+
 [Bb][Uu][Ii][Ll][Dd]/
 
