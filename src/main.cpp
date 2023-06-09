@@ -148,14 +148,14 @@ void applyDirichletBC(std::vector<Eigen::Triplet<double>> &tripletK, std::vector
 		it1 = std::find(nodedof.begin(), nodedof.end(), tripletK[index].col());
 		it2 = std::find(nodedof.begin(), nodedof.end(), tripletK[index].row());
 		if(it1 !=nodedof.end() || it2 !=nodedof.end()){
-			if (tripletK[index].row() == tripletK[index].col()){
-				tripletDBC.push_back(Eigen::Triplet<double> (tripletK[index].row(), tripletK[index].col(), 1.0));
-			}
 			tripletK.erase(tripletK.begin() + index);
 			--index;
 		}
 
 	}
+  for(int index=0;index<nodedof.size();++index){
+    tripletDBC.push_back(Eigen::Triplet<double> (nodedof[index], nodedof[index], 1.0));
+  }
 	tripletK.insert(tripletK.end(), tripletDBC.begin(), tripletDBC.end());
 	for(int index=0;index<nodedof.size();++index){
 		f_global[nodedof[index]] = valuedof[index];
