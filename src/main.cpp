@@ -98,18 +98,18 @@ int main(int argc, char **args){
   //VecView(x,PETSC_VIEWER_STDOUT_WORLD);
 
   Vec            x_seq;
-  PetscScalar    *solution2;
+  PetscScalar    *solution;
   VecScatter     ctx;
   //VecScatterCreateToAll(x,&ctx,&x_seq);
   VecScatterCreateToZero(x,&ctx,&x_seq);
   VecScatterBegin(ctx,x,x_seq,INSERT_VALUES,SCATTER_FORWARD);
   VecScatterEnd(ctx,x,x_seq,INSERT_VALUES,SCATTER_FORWARD);
-  VecGetArray(x_seq,&solution2);
+  VecGetArray(x_seq,&solution);
 
   if(rank == root){
     auto topo = vtkobj.get_topology(elem->get_elemType(2));
     iovtk outvtk(vtkobj.nodes, topo, elem);
-    outvtk.writeVtk("displacement.vtk", solution2);
+    outvtk.writeVtk("displacement.vtk", solution);
   }
 
   PetscFinalize();
