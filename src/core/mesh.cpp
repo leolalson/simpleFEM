@@ -16,14 +16,16 @@ void mesh::getMeshData(iovtk ioobj){
     }
   }
   this->nodes = points(pointData);
-
   this->topology = domain(this->elem, elem->dim);
   this->topology.getDomainData(ioobj);
   this->topology.getDomainTags(ioobj);
 
 }
 
-domain::domain(element* elem, int dim) : elem(elem), dim(dim){};
+domain::domain(element* elem, int eDim){
+  this->elem = elem->getElement(elem, eDim);
+  this->dim = eDim;
+};
 
 void domain::getDomainData(iovtk ioobj){
   std::vector<std::vector<size_t>> topo = ioobj.get_topology(this->elem->get_elemType(dim));
