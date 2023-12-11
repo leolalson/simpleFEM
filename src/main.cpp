@@ -6,7 +6,7 @@ static char help[] = "simpleFEM multiphysics code \n\n";
 
 int main(int argc, char **args){
 
-  std::string meshFileName = "../rectangle_3NodeTri.vtk";
+  std::string meshFileName = "../rectangle_3NodeTri_refined3.vtk";
   std::string materialType = "linearElastic";
   double E=1.0, nu=0.3;
   std::string elementType = "3NodeTri";
@@ -31,23 +31,50 @@ int main(int argc, char **args){
   MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
 
   PetscPrintf(PETSC_COMM_WORLD,"Number of processors = %d\n",size);
-  //PetscPrintf(PETSC_COMM_SELF,"rank = %d\n",rank);
 
   iovtk vtkobj;
   int meshDof = 0;
   material* mat;
+  mat = material::materialMap[materialType]();
+  mat->set_properties(E, nu);
+
   element* elem = element::elementMap[elementType]();
   mesh msh(elem);
+  domain edgeDomain(elem, 1);
+  bc* press = bc::bcMap[bcType](); 
+
   if (rank == root){
     vtkobj = iovtk::readvtk(meshFileName);
-    mat = material::materialMap[materialType]();
-    mat->set_properties(E, nu);
     msh.getMeshData(vtkobj);
-    Eigen::MatrixXi topo = msh.topology.data;
     int elemDof = elem->dim;
     meshDof = elemDof * msh.nodes.size;
+    edgeDomain.getDomainData(vtkobj);
+    edgeDomain.getDomainTags(vtkobj);
   }
+
   MPI_Bcast(&meshDof , 1, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(&msh.nodes.size , 1, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(&msh.topology.size , 1, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(&msh.topology.dim , 1, MPI_INT, root, MPI_COMM_WORLD);
+
+  MPI_Bcast(&edgeDomain.size , 1, MPI_INT, root, MPI_COMM_WORLD);
+
+  if(rank!=root){
+    msh.topology.data.resize(msh.topology.size,elem->numNodes);
+    msh.topology.data.setZero();
+
+    msh.nodes.data.resize(msh.nodes.size,3);
+    msh.nodes.data.setZero();
+
+    edgeDomain.data.resize(edgeDomain.size, edgeDomain.elem->numNodes);
+    edgeDomain.tags.resize(edgeDomain.size);
+  }
+
+  MPI_Bcast(msh.topology.data.data() , msh.topology.size *elem->numNodes, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(msh.nodes.data.data() , msh.nodes.size *3, MPI_DOUBLE, root, MPI_COMM_WORLD);
+  MPI_Bcast(edgeDomain.data.data() , edgeDomain.size *edgeDomain.elem->numNodes, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(edgeDomain.tags.data() , edgeDomain.size, MPI_INT, root, MPI_COMM_WORLD);
+
   VecCreate(PETSC_COMM_WORLD, &x);
   VecSetSizes(x, PETSC_DECIDE, meshDof);
   VecSetFromOptions(x);
@@ -59,19 +86,28 @@ int main(int argc, char **args){
   MatSetFromOptions(A);
   MatSetUp(A);
 
-  std::vector<std::pair<int, double>> nodeValuePair;
+  MPI_Barrier(MPI_COMM_WORLD);
 
+  std::vector<std::pair<int, double>> nodeValuePair;
+  press->set_values(msh, edgeDomain, {bcTag}, bcValue);
+  std::vector<bc> bcs{*press};
+
+  
+  utils::assembleMatrixMPI(A, msh, mat, rank, size);
+  
+
+  //for(int i=0;i<size;++i){
+  //  if(rank == i){
+  //    std::cout << "Rank: " << rank << std::endl;
+  //    std::cout << std::endl;
+  //  }
+  //  MPI_Barrier(MPI_COMM_WORLD);
+  //}
+
+  utils::assembleVectorMPI(b, msh, bcs, rank, size);
+
+  
   if (rank == root){
-    std::cout << "Number of Nodes : " << msh.nodes.size << std::endl;
-    std::cout << "Number of Elements : " << msh.topology.size << std::endl;
-    utils::assembleMatrix(A, msh, mat);
-    domain edgeDomain(elem, 1);
-    edgeDomain.getDomainData(vtkobj);
-    edgeDomain.getDomainTags(vtkobj);
-    bc* press = bc::bcMap[bcType](); 
-    press->set_values(msh, edgeDomain, {bcTag}, bcValue);
-    std::vector<bc> bcs{*press};
-    utils::assembleVector(b, msh, bcs);
 
     domain dbcBoundary = edgeDomain.getSubdomain(dbcTag);
     utils::getDBCvalues(nodeValuePair, dbcBoundary, dbcDim, dbcValue, elem->dim);
@@ -95,7 +131,7 @@ int main(int argc, char **args){
 
   //MatZeroRowsColumns(A, numDBC, rowsDBC, 1.0, NULL, NULL);
   //MatView(A, PETSC_VIEWER_STDOUT_WORLD);
-  //VecView(x,PETSC_VIEWER_STDOUT_WORLD);
+  //VecView(b,PETSC_VIEWER_STDOUT_WORLD);
 
   Vec            x_seq;
   PetscScalar    *solution;
@@ -111,7 +147,7 @@ int main(int argc, char **args){
     iovtk outvtk(vtkobj.nodes, topo, elem);
     outvtk.writeVtk("displacement.vtk", solution);
   }
-
+  
   PetscFinalize();
   return 0;
 }

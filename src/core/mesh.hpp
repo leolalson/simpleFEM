@@ -14,7 +14,7 @@ class domain{
   int dim;
   Eigen::MatrixXi data;
   Eigen::VectorXi tags;
-  size_t size;
+  size_t size = 0;
   element* elem;
 
   void getDomainData(iovtk ioobj);
@@ -26,7 +26,7 @@ class domain{
 
 class points{
   public:
-  size_t size;
+  size_t size = 0;
   Eigen::MatrixXd data;
   points(){};
   ~points(){};

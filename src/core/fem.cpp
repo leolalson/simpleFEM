@@ -5,7 +5,6 @@ double BMatrix(Eigen::MatrixXd &B, Eigen::MatrixXd coords, Eigen::Vector3d N, Ei
   Eigen::MatrixXd jacobian = dNdr * coords;
   double det = jacobian.determinant();
   Eigen::MatrixXd jacobian_inv = jacobian.inverse();
-
   Eigen::MatrixXd dNdx = jacobian_inv * dNdr;
 
   B({0},{0,2,4}) = dNdx.row(0);
@@ -45,6 +44,7 @@ tri3::tri3(){
 tri3::~tri3(){};
 
 Eigen::MatrixXd tri3::Kmatrix(Eigen::MatrixXd coords, Eigen::MatrixXd D){
+
   Eigen::MatrixXd B(3,6);
   //Eigen::MatrixXd dNdr{{-1, 1, 0}, {-1, 0, 1}};
   Eigen::MatrixXd K_local(dof, dof);
@@ -55,8 +55,8 @@ Eigen::MatrixXd tri3::Kmatrix(Eigen::MatrixXd coords, Eigen::MatrixXd D){
 
     Eigen::Vector3d N(1-rs(0)-rs(1), rs(0), rs(1));
     Eigen::MatrixXd dNdr{{-1, 1, 0}, {-1, 0, 1}};
-
     double det = BMatrix(B, coords, N, dNdr);
+
     K_local += 0.5 * det * thick * gaussWts(i) * (B.transpose() * D * B); 
   }
   return K_local;

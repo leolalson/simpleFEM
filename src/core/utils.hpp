@@ -41,6 +41,62 @@ void printVector2D(std::vector<std::vector<T>> myVector, std::string name){
   }
 }
 
+void assembleMatrixMPI(Mat &A, mesh &msh, material* mat, int mpi_rank, int mpi_size){
+  int dim = msh.topology.dim;
+  PetscInt dof = msh.elem->numNodes * dim;
+  PetscInt* elemtopoDof2 = new PetscInt[dof];
+  PetscScalar* value = new PetscScalar[dof * dof];
+  Eigen::MatrixXd nodes2d = msh.nodes.data(Eigen::all, {0, 1});
+  Eigen::MatrixXi topo = msh.topology.data;
+  Eigen::MatrixXi topoDof(topo.rows(), dim * topo.cols());
+  topoDof.setZero();
+  for(int i=0;i<topo.cols();++i){
+    for(int j=0;j<dim;++j){
+      topoDof(Eigen::all, {(i*dim)+j}) = ((topo.col(i).array() * dim) + j);
+    }
+  }
+  
+  for(int e=mpi_rank;e<msh.topology.size;e=e+mpi_size){
+    Eigen::VectorXi elemTopo = topo.row(e);
+    Eigen::VectorXi elemTopoDof = topoDof.row(e);
+    Eigen::MatrixXd elemNodes = nodes2d(elemTopo, Eigen::all);
+    Eigen::MatrixXd K_local = msh.elem->Kmatrix(elemNodes, mat->D);
+    
+    std::copy(elemTopoDof.data(), elemTopoDof.data() + elemTopoDof.size(), elemtopoDof2);
+    value = K_local.data();
+    MatSetValues(A, dof, elemtopoDof2, dof, elemtopoDof2, value, ADD_VALUES);
+
+  }
+}
+
+void assembleVectorMPI(Vec &b, mesh msh, std::vector<bc> bcs, int mpi_rank, int mpi_size){
+  bc bc0 = bcs[0];  
+  int dim = msh.topology.dim;
+  PetscInt dof = bc0.boundary.elem->numNodes * dim;
+  PetscInt* elemtopoDof2 = new PetscInt[dof];
+  PetscScalar* value = new PetscScalar[dof];
+  Eigen::MatrixXd nodes2d = msh.nodes.data(Eigen::all, {0, 1});
+  Eigen::MatrixXi topo = bc0.boundary.data;
+  Eigen::MatrixXi topoDof(topo.rows(), dim * topo.cols());
+
+  for(int i=0;i<topo.cols();++i){
+    for(int j=0;j<dim;++j){
+      topoDof(Eigen::all, {(i*dim)+j}) = ((topo.col(i).array() * dim) + j);
+    }
+  }
+  for(int e=mpi_rank;e<bc0.boundary.size;e=e+mpi_size){
+    Eigen::VectorXi elemTopo = topo.row(e);
+    Eigen::VectorXi elemTopoDof = topoDof.row(e);
+    Eigen::MatrixXd elemNodes = nodes2d(elemTopo, Eigen::all);
+    Eigen::VectorXd f_local = bc0.boundary.elem->fvector(elemNodes, bc0.bcVector.row(e));
+
+    std::copy(elemTopoDof.data(), elemTopoDof.data() + elemTopoDof.size(), elemtopoDof2);
+    value = f_local.data();
+    VecSetValues(b, dof, elemtopoDof2, value, ADD_VALUES);
+  }
+
+}
+
 void assembleMatrix(Mat &A, mesh &msh, material* mat){
   int dim = msh.topology.dim;
   PetscInt dof = msh.elem->numNodes * dim;

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(simpleFEM)
 
-set(CMAKE_CXX_COMPILER /home/red/gitclones/petsc/arch-python-linux-x86_64/bin/mpicxx)
+set(CMAKE_CXX_COMPILER /usr/bin/mpicxx)
 set(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_FLAGS_DEBUG "-g")
 #find_package (Eigen3 3.4 REQUIRED NO_MODULE)
