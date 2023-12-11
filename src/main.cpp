@@ -3,10 +3,12 @@ static char help[] = "simpleFEM multiphysics code \n\n";
 #include "core/utils.hpp"
 #include <eigen3/Eigen/SparseLU>
 #include <petscksp.h>
+#include <chrono>
 
 int main(int argc, char **args){
 
-  std::string meshFileName = "../rectangle_3NodeTri_refined3.vtk";
+  //std::string meshFileName = "../rectangle_3NodeTri_refined3.vtk";
+  std::string meshFileName = args[1];
   std::string materialType = "linearElastic";
   double E=1.0, nu=0.3;
   std::string elementType = "3NodeTri";
@@ -43,6 +45,7 @@ int main(int argc, char **args){
   domain edgeDomain(elem, 1);
   bc* press = bc::bcMap[bcType](); 
 
+  double start_read_mesh = MPI_Wtime();
   if (rank == root){
     vtkobj = iovtk::readvtk(meshFileName);
     msh.getMeshData(vtkobj);
@@ -51,12 +54,13 @@ int main(int argc, char **args){
     edgeDomain.getDomainData(vtkobj);
     edgeDomain.getDomainTags(vtkobj);
   }
+  double end_read_mesh = MPI_Wtime();
 
+  double start_comm = MPI_Wtime();
   MPI_Bcast(&meshDof , 1, MPI_INT, root, MPI_COMM_WORLD);
   MPI_Bcast(&msh.nodes.size , 1, MPI_INT, root, MPI_COMM_WORLD);
   MPI_Bcast(&msh.topology.size , 1, MPI_INT, root, MPI_COMM_WORLD);
   MPI_Bcast(&msh.topology.dim , 1, MPI_INT, root, MPI_COMM_WORLD);
-
   MPI_Bcast(&edgeDomain.size , 1, MPI_INT, root, MPI_COMM_WORLD);
 
   if(rank!=root){
@@ -74,7 +78,9 @@ int main(int argc, char **args){
   MPI_Bcast(msh.nodes.data.data() , msh.nodes.size *3, MPI_DOUBLE, root, MPI_COMM_WORLD);
   MPI_Bcast(edgeDomain.data.data() , edgeDomain.size *edgeDomain.elem->numNodes, MPI_INT, root, MPI_COMM_WORLD);
   MPI_Bcast(edgeDomain.tags.data() , edgeDomain.size, MPI_INT, root, MPI_COMM_WORLD);
+  double end_comm = MPI_Wtime();
 
+  double start_assemble = MPI_Wtime();
   VecCreate(PETSC_COMM_WORLD, &x);
   VecSetSizes(x, PETSC_DECIDE, meshDof);
   VecSetFromOptions(x);
@@ -86,27 +92,16 @@ int main(int argc, char **args){
   MatSetFromOptions(A);
   MatSetUp(A);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  utils::assembleMatrixMPI(A, msh, mat, rank, size);
 
   std::vector<std::pair<int, double>> nodeValuePair;
   press->set_values(msh, edgeDomain, {bcTag}, bcValue);
   std::vector<bc> bcs{*press};
-
-  
-  utils::assembleMatrixMPI(A, msh, mat, rank, size);
-  
-
-  //for(int i=0;i<size;++i){
-  //  if(rank == i){
-  //    std::cout << "Rank: " << rank << std::endl;
-  //    std::cout << std::endl;
-  //  }
-  //  MPI_Barrier(MPI_COMM_WORLD);
-  //}
-
   utils::assembleVectorMPI(b, msh, bcs, rank, size);
 
-  
+  double end_assemble = MPI_Wtime();
+
+  double start_dbc = MPI_Wtime();
   if (rank == root){
 
     domain dbcBoundary = edgeDomain.getSubdomain(dbcTag);
@@ -114,13 +109,18 @@ int main(int argc, char **args){
     std::sort(nodeValuePair.begin(), nodeValuePair.end());
 
   }
+  double end_dbc = MPI_Wtime();
+
+  double start_petsc_assemble = MPI_Wtime();
   VecAssemblyBegin(b);
   VecAssemblyEnd(b);
   MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
   MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
+  double end_petsc_assemble = MPI_Wtime();
 
+  double start_solve = MPI_Wtime();
   utils::applyDirichletBC(A, b, nodeValuePair);
-
+  
   KSPCreate(PETSC_COMM_WORLD, &ksp);
   KSPSetOperators(ksp, A, A);
   KSPGetPC(ksp, &pc);
@@ -128,11 +128,13 @@ int main(int argc, char **args){
   KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT);
   KSPSetFromOptions(ksp);
   KSPSolve(ksp, b, x);
+  double end_solve = MPI_Wtime();
 
   //MatZeroRowsColumns(A, numDBC, rowsDBC, 1.0, NULL, NULL);
   //MatView(A, PETSC_VIEWER_STDOUT_WORLD);
   //VecView(b,PETSC_VIEWER_STDOUT_WORLD);
 
+  double start_write_result = MPI_Wtime();
   Vec            x_seq;
   PetscScalar    *solution;
   VecScatter     ctx;
@@ -147,7 +149,18 @@ int main(int argc, char **args){
     iovtk outvtk(vtkobj.nodes, topo, elem);
     outvtk.writeVtk("displacement.vtk", solution);
   }
-  
+  double end_write_result = MPI_Wtime();
+
+  if(rank == root){
+    std::cout << "Read mesh: " << end_read_mesh - start_read_mesh << " seconds" << std::endl;
+    std::cout << "Communications: " << end_comm - start_comm << " seconds" << std::endl;
+    std::cout << "Assemble: " << end_assemble - start_assemble << " seconds" << std::endl;
+    std::cout << "dbc: " << end_dbc - start_dbc << " seconds" << std::endl;
+    std::cout << "Petsc assemble: " << end_petsc_assemble - start_petsc_assemble << " seconds" << std::endl;
+    std::cout << "Solve: " << end_solve - start_solve << " seconds" << std::endl;
+    std::cout << "Write result: " << end_write_result - start_write_result << " seconds" << std::endl;
+
+  }
   PetscFinalize();
   return 0;
 }
