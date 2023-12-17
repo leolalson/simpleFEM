@@ -55,8 +55,12 @@ void assembleMatrixMPI(Mat &A, mesh &msh, material* mat, int mpi_rank, int mpi_s
       topoDof(Eigen::all, {(i*dim)+j}) = ((topo.col(i).array() * dim) + j);
     }
   }
-  
-  for(int e=mpi_rank;e<msh.topology.size;e=e+mpi_size){
+  int start = mpi_rank*mpi_size;
+  int end = start + msh.topology.size/mpi_size;
+  if (mpi_rank == (mpi_size-1)){
+    end = msh.topology.size;
+  }
+  for(int e=start;e<end;e++){
     Eigen::VectorXi elemTopo = topo.row(e);
     Eigen::VectorXi elemTopoDof = topoDof.row(e);
     Eigen::MatrixXd elemNodes = nodes2d(elemTopo, Eigen::all);
